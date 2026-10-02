@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Dependencies and build output
+node_modules/
+out/
+dist/
+*.skill
+
+# Media never belongs in this repo; it lives in each PC's MFM-Studio folder
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.m4a
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/

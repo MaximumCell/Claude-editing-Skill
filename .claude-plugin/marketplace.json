@@ -1,0 +1,13 @@
+{
+  "name": "mfm-tools",
+  "owner": {
+    "name": "MaximumCell"
+  },
+  "plugins": [
+    {
+      "name": "mfm-video-editor",
+      "source": "./",
+      "description": "Automatic Remotion video editor for the Make First Million channel."
+    }
+  ]
+}

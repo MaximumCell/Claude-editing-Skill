@@ -1,0 +1,8 @@
+{
+  "name": "mfm-video-editor",
+  "description": "Automatic Remotion video editor for the Make First Million channel: audio sync, silence/filler cuts, branded motion graphics, B-roll, SFX, and renders for long-form and Shorts.",
+  "version": "0.1.0",
+  "author": {
+    "name": "MaximumCell"
+  }
+}
