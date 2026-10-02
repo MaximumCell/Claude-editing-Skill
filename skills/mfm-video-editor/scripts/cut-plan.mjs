@@ -1,9 +1,11 @@
 // Builds the cut list (EDL) for the master audio: removes silences automatically, plus any
 // ranges Claude marked for removal (fillers, retakes) in work/removals.json.
-// removals.json edges are word times (DTW, which lands late in the word), so each edge is first
-// snapped to the quietest 10 ms in [t - 0.5 s, t + 0.1 s], the pause before that word.
+// removals.json edges are approximate word times (Whisper DTW can be off by up to ~1 s), so each
+// edge is snapped to a real pause found in the audio: for retakes/sentences the nearest pause
+// >= 150 ms within ±1.2 s, for fillers the nearest pause >= 30 ms within ±0.4 s.
 // Every final cut point is then snapped to the quietest 10 ms within ±80 ms so words are never clipped.
 //   start = time of the first word to remove, end = time of the first word to keep.
+//   Optional "kind": "filler" | "sentence" (default: "filler" if reason starts with "filler").
 //
 // Usage: node cut-plan.mjs <videoDir> [--threshold -40] [--min-silence 0.35] [--preview]
 //   removals.json (optional): [{ "start": 12.3, "end": 14.1, "reason": "retake" }, ...]
@@ -52,10 +54,35 @@ const quietest = (t, before = SNAP, after = SNAP) => {
   return Math.max(0, Math.min(duration, best));
 };
 
+// Pause map: 10 ms frames quieter than (noise floor + 12 dB), in runs of >= 30 ms.
+const frameDb = [];
+for (let i = 0; i + FRAME <= pcm.length; i += FRAME) {
+  let e = 0; for (let j = 0; j < FRAME; j++) e += pcm[i + j] ** 2;
+  frameDb.push(10 * Math.log10(e / FRAME + 1e-12));
+}
+const floor = [...frameDb].sort((a, b) => a - b)[Math.floor(frameDb.length * 0.1)];
+const pauses = [];
+for (let i = 0, start = -1; i <= frameDb.length; i++) {
+  const quiet = i < frameDb.length && frameDb[i] < floor + 12;
+  if (quiet && start < 0) start = i;
+  if (!quiet && start >= 0) { if (i - start >= 3) pauses.push({ start: start / 100, end: i / 100 }); start = -1; }
+}
+const snapEdge = (t, kind) => {
+  const [minLen, range] = kind === 'filler' ? [0.03, 0.4] : [0.15, 1.2];
+  let best = null, bestD = Infinity;
+  for (const p of pauses) {
+    if (p.end - p.start < minLen) continue;
+    const d = t < p.start ? p.start - t : t > p.end ? t - p.end : 0;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best && bestD <= range ? (best.start + best.end) / 2 : quietest(t, 0.5, 0.1);
+};
+const kindOf = (r) => r.kind ?? (/^\s*filler/i.test(r.reason ?? '') ? 'filler' : 'sentence');
+
 // 3. Merge all removal ranges (silences keep a little breathing room around speech).
 const ranges = [
   ...silences.map((r) => ({ ...r, start: r.start + PAD_AFTER, end: r.end - PAD_BEFORE })),
-  ...removals.map((r) => ({ ...r, start: quietest(r.start, 0.5, 0.1), end: quietest(r.end, 0.5, 0.1) })),
+  ...removals.map((r) => ({ ...r, start: snapEdge(r.start, kindOf(r)), end: snapEdge(r.end, kindOf(r)) })),
 ].filter((r) => r.end > r.start).sort((a, b) => a.start - b.start);
 const merged = [];
 for (const r of ranges) {

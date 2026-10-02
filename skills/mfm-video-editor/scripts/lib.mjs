@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 export const CONFIG_PATH =
   process.env.MFM_CONFIG ?? path.join(os.homedir(), '.mfm-video-editor', 'config.json');
 
-export const WHISPER_CPP_VERSION = '1.5.5'; // Remotion's recommended Windows build
+export const WHISPER_CPP_VERSION = '1.9.2'; // newest release with Windows binaries; needed for large-v3-turbo DTW
 
 export function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {

@@ -31,7 +31,6 @@ const result = await transcribe({
   modelFolder: path.join(cfg.engineDir, 'whisper-models'),
   tokenLevelTimestamps: true,
   language: cfg.language === 'auto' ? null : cfg.language,
-  splitOnWord: true,
   printOutput: false,
   onProgress: (p) => process.stdout.write(`\r  ${Math.round(p * 100)}%`),
 });

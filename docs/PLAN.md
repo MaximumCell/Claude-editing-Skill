@@ -6,6 +6,8 @@ Status: v0.1 in progress.
 - Written: `SKILL.md`, `references/brand.md`, `style-rules.md`, `sfx-rules.md`, `broll-sourcing.md`, `logo-sourcing.md`
 - Not yet built: Remotion template + brand components, edit-plan → render step, review loop
 - Not yet tested: Urdu/English speech (needs a real recording)
+- Whisper: whisper.cpp 1.9.2 + large-v3-turbo (1.5.5 cannot do turbo word timing). ~2.7× real time on the i5-8365U laptop (no NVIDIA GPU)
+- Known limit: word times can be ~1 s off; sentence-level retake cuts are reliable, single-word cuts near long pauses can miss (caught by the re-transcription check)
 - Spoken language: mostly Urdu with some English → Whisper language `ur`
 
 ## Decisions so far

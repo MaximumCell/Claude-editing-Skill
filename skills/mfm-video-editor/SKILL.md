@@ -56,7 +56,9 @@ Run `node scripts/setup.mjs --check`. If there's no config yet, ask the user onl
 - `transcript-words.tsv`: `time  confidence  word`, one per line. Use it for exact word times (fillers inside sentences).
 - `transcript.json`: the same words, for scripts.
 
-Word times are **approximate**: they usually land 0.2–0.4 s after the word really starts, and the last word before a pause can drift further. That's expected. The cut script corrects edges against the real audio.
+Word times are **approximate**: often 0.2–0.4 s off and sometimes up to ~1 s (worst around pauses). That's expected. The cut script snaps edges to real pauses in the audio. Retakes (whole sentences) cut reliably; single-word removals near long pauses can miss, which is why step 4's re-transcription check is mandatory.
+
+Transcription speed: `large-v3-turbo` runs at roughly 2–3× real time on a laptop CPU without an NVIDIA GPU (a 20-min video ≈ 45–60 min). Tell the user it's running; don't switch models on your own.
 
 ### 3. Decide removals (fillers & retakes)
 Following `style-rules.md` §1, write `work/removals.json`:

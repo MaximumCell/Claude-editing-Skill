@@ -81,7 +81,20 @@ fs.mkdirSync(modelDir, { recursive: true });
 console.log(`\nInstalling whisper.cpp ${WHISPER_CPP_VERSION}...`);
 // installWhisperCpp downloads its zip into the current working directory.
 process.chdir(cfg.engineDir);
-await installWhisperCpp({ to: whisperDir, version: WHISPER_CPP_VERSION, printOutput: true });
+// Remotion expects <whisper>/build/bin/whisper-cli.exe for versions >= 1.7.4, but the official
+// Windows zip unpacks to <whisper>/Release/. A folder without that exe (old version) is replaced.
+const cliExe = path.join(whisperDir, 'build', 'bin', 'whisper-cli.exe');
+if (fs.existsSync(whisperDir) && !fs.existsSync(cliExe)) fs.rmSync(whisperDir, { recursive: true, force: true });
+if (!fs.existsSync(cliExe)) {
+  await installWhisperCpp({ to: whisperDir, version: WHISPER_CPP_VERSION, printOutput: true });
+  const release = path.join(whisperDir, 'Release');
+  if (!fs.existsSync(cliExe) && fs.existsSync(release)) {
+    // Copy, not rename: antivirus often still holds the freshly unzipped files.
+    fs.cpSync(release, path.dirname(cliExe), { recursive: true });
+    try { fs.rmSync(release, { recursive: true, force: true }); } catch { /* harmless leftover */ }
+  }
+  if (!fs.existsSync(cliExe)) fail(`whisper.cpp installed but ${cliExe} is missing.`);
+} else console.log('whisper.cpp already installed.');
 console.log(`Downloading Whisper model "${whisperModel}" (can be over 1 GB, one time only)...`);
 await downloadWhisperModel({ model: whisperModel, folder: modelDir, printOutput: false });
 
