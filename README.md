@@ -23,7 +23,11 @@ Update later with `/plugin update`.
 - ffmpeg
 - yt-dlp
 - A local **MFM-Studio** folder for logos, fonts, B-roll, SFX, and videos (created on first run)
-- A `.env` file with the shared team keys (copy `.env.example`)
+- The shared team keys in `<MFM-Studio>/.env` (setup creates the file; see `.env.example`). `ELEVENLABS_API_KEY` matters most: without it, transcription runs locally and slowly
+
+## Getting better over time
+
+When you correct a video, the skill saves the fix as a rule in `skills/mfm-video-editor/references/learned-rules.md`. If you have push access (setup `--repo`), the rule is pushed, so everyone gets it with `/plugin update`. Without push access, rules go to `<MFM-Studio>/learned-rules-pending.md`, and you send that file to the maintainer.
 
 ## Repo layout
 

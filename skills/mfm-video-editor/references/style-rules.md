@@ -7,15 +7,24 @@ The look blends three references:
 
 Every visual must **explain or emphasize what is being said at that moment**. If a graphic doesn't help the viewer understand the sentence, leave the A-roll on screen.
 
+## 0. Hard rules
+
+- **Only remove, never rearrange.** Don't reorder, rewrite, or splice words from different takes into new sentences. The speaker's words and their order stay exactly as said (only fillers, retakes, stumbles, coughs, and pauses come out).
+- **Keep sync exact.** The rendered video must be exactly as long as the cut (`edl.json` keptSeconds, ±1 frame), and the voice must never drift against the picture or the graphics.
+- **Make it feel edited, not like a slideshow.** Graphics move with the speech, the speaker stays the anchor, and every visual is timed to the words that motivate it.
+
 ## 1. Cleanup (Hormozi-tight)
 
 - Remove all dead air. Silences are handled automatically by `cut-plan.mjs`; keep a natural breath between sentences (the padding is built in).
 - **Fillers**: remove them when they stand alone between words, not when they carry meaning.
   - English: um, uh, erm, hmm, "you know", "I mean", "like" (as a filler), "basically"/"actually"/"so" when they lead a sentence with no meaning.
   - Urdu: matlab, yani, "toh" (as a leading filler), acha (as a filler), "jo hai", "kya kehte hain", haan (as a filler), "dekhen".
-  - Whisper often drops fillers from the transcript. Gaps of 0.2–0.8 s between words inside a sentence, with audible sound, are likely fillers. Check them with the audio energy and the low-confidence words.
+  - ElevenLabs transcripts keep fillers word for word, so remove them directly by their times. Local Whisper often drops fillers: there, gaps of 0.2–0.8 s between words inside a sentence, with audible sound, are likely fillers. Check them with the audio energy and the low-confidence words.
 - **Retakes**: when a sentence (or its start) is repeated, keep the **last complete** version unless an earlier one is clearly better (finished, no stumble). Remove false starts ("So the — so the main thing...").
+- **Stumbles, restarts, coughs**: remove them too. With ElevenLabs transcripts, coughs/laughs appear as `(cough)`-style events. Keep a laugh if it's a reaction to the content.
 - Never cut mid-word. Check by re-transcribing `cut-preview.wav` and comparing: no lost or chopped words.
+- Every join gets a 10 ms fade out/in so it never clicks (the preview does this; the render must too).
+- When unsure (a filler that might carry meaning, two equally good takes), make the call, and list it with its time in the edit report's **"Unsure"** section.
 - Mixed Urdu/English speech is normal for this channel. Don't remove English words inside Urdu sentences (or the reverse).
 
 ## 2. Pacing: hybrid
@@ -41,7 +50,8 @@ Single camera, so all zooms are digital.
 | **A-roll** | Default, opinions, stories | Full frame + zooms |
 | **Screen + PiP** | A screen recording is relevant | Screen inside a rounded window mockup (radius 20–24), dark background with green glow; speaker PiP bottom-left (bottom-right if content is there), ~20% width, radius 24, 1–2px white 15% border, soft shadow |
 | **Comparison** | "X vs Y", before/after, two options | Two rounded cards side-by-side (or top/bottom), each with a white or lime pill title; optional PiP |
-| **Full graphic** | Explaining a concept/process/number | Full-screen dark (or light card) graphic; voice continues underneath |
+| **Full graphic** | Explaining a concept/process/number | Full-screen dark (or light card) graphic; voice continues underneath. **Max 6 s**, then the speaker comes back (as A-roll, PiP, or split) |
+| **Split** | A graphic that needs room but the moment is personal | Speaker in a rounded panel on the right (~40%), graphic on the left |
 | **B-roll** | Mentions of real events, products, people, places | Full frame, 1.5–4 s, with a slow Ken-Burns zoom on stills |
 
 ## 5. Callouts (no full captions)

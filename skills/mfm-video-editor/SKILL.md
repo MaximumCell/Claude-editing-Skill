@@ -13,6 +13,7 @@ Scripts live in `scripts/` next to this file. Run them with `node <skill-dir>/sc
 
 | File | Read when |
 |---|---|
+| `references/learned-rules.md` | **Always, first.** Fixes the team asked for before; overrides the other files when they conflict |
 | `references/brand.md` | Always, before building any graphic |
 | `references/style-rules.md` | Always: pacing, cleanup, layouts, callouts, graphics vocabulary, Shorts |
 | `references/sfx-rules.md` | When placing SFX and music |
@@ -25,7 +26,10 @@ Also use the official Remotion skills (`remotion-best-practices` and friends, in
 
 ```
 <studio>/                      path in %USERPROFILE%\.mfm-video-editor\config.json
-  brand/logos  brand/fonts  logos-cache  broll  sfx  music  .env  .engine
+  brand/logos  brand/fonts  logos-cache  broll  sfx  music  .engine
+  .env                         team API keys (ELEVENLABS_API_KEY, ...). Never ask the user to paste a key into chat:
+                               tell them to fill it into this file themselves
+  keyterms.txt                 brand/product names for transcription. Add new tool names when you meet them
   videos/<date-slug>/
     camera.mp4                 single camera (16:9 long-form, or 9:16 for Shorts)
     mic.wav                    separate mic = MASTER audio
@@ -44,6 +48,8 @@ Also use the official Remotion skills (`remotion-best-practices` and friends, in
 Run `node scripts/setup.mjs --check`. If there's no config yet, ask the user only for the Studio path, then run:
 `node scripts/setup.mjs --studio "<path>" --language ur --model large-v3-turbo`
 (The channel speaks mostly Urdu with some English. `ur` handles the mix better than `auto`.)
+Maintainers with push access to the skill repo add `--repo "<path to their Claude-editing-Skill checkout>"` so learned rules get pushed.
+After setup, if `ELEVENLABS_API_KEY` in `<studio>/.env` is empty, tell the user where the file is and ask them to fill it in themselves.
 
 ### 1. Sync
 `node scripts/sync-audio.mjs <videoDir>` → `work/sync.json`.
@@ -53,12 +59,15 @@ Run `node scripts/setup.mjs --check`. If there's no config yet, ask the user onl
 ### 2. Transcribe
 `node scripts/transcribe.mjs <videoDir>` → three files in `work/`:
 - `transcript.txt`: one sentence per line, `[mm:ss.ss] text`. Read it fully before deciding anything. It's mostly Urdu script with English terms mixed in.
-- `transcript-words.tsv`: `time  confidence  word`, one per line. Use it for exact word times (fillers inside sentences).
-- `transcript.json`: the same words, for scripts.
+- `transcript-words.tsv`: `start  end  confidence  word`, one per line. Use it for word times (fillers inside sentences).
+- `transcript.json`: the same words plus `provider` and `timing`, for scripts.
 
-Word times are **approximate**: often 0.2–0.4 s off and sometimes up to ~1 s (worst around pauses). That's expected. The cut script snaps edges to real pauses in the audio. Retakes (whole sentences) cut reliably; single-word removals near long pauses can miss, which is why step 4's re-transcription check is mandatory.
+**Provider**: ElevenLabs Scribe v2 is used automatically when `ELEVENLABS_API_KEY` is set in `<studio>/.env`. It has strong Urdu + English code-switching, `timing: "exact"`, keeps filler words, and tags coughs/laughs as `(cough)` events, at about 1 min per hour of audio. Without a key (or with `--provider whisper`, or when ElevenLabs fails), it runs local Whisper `large-v3-turbo`:
+- Free and offline.
+- `timing: "approx"`: word times are often 0.2–0.4 s off and sometimes ~1 s. The cut script compensates by snapping to real pauses.
+- About 2–3× real time on a laptop CPU (a 20-min video ≈ 45–60 min). Tell the user it's running and suggest adding the ElevenLabs key; don't switch models on your own.
 
-Transcription speed: `large-v3-turbo` runs at roughly 2–3× real time on a laptop CPU without an NVIDIA GPU (a 20-min video ≈ 45–60 min). Tell the user it's running; don't switch models on your own.
+If the speaker names a tool that's missing from `<studio>/keyterms.txt` and it came out misspelled, add it there and re-transcribe.
 
 ### 3. Decide removals (fillers & retakes)
 Following `style-rules.md` §1, write `work/removals.json`:
@@ -66,12 +75,19 @@ Following `style-rules.md` §1, write `work/removals.json`:
 [{ "start": 12.30, "end": 18.10, "reason": "retake: repeated 'AI agents kya hain'" },
  { "start": 31.02, "end": 31.60, "reason": "filler: matlab" }]
 ```
-- `start` = time of the **first word to remove**; `end` = time of the **first word to keep** after it (both straight from `transcript-words.tsv`). The script snaps each edge to the real pause just before that word.
+- `start` = start time of the **first word to remove**; `end` = start time of the **first word to keep** after it (both from `transcript-words.tsv`). The script snaps each edge to the real pause next to that word.
 - Times are in master (mic) time. Silences are handled by the script, so don't list them.
+- Include coughs and other unwanted `(events)`; reason `"cough"` etc.
+- **Only remove.** Never reorder, never build a sentence out of pieces of different takes.
 
 ### 4. Cut
 `node scripts/cut-plan.mjs <videoDir> --preview` → `work/edl.json` (keep segments) and `work/cut-preview.wav`.
-Verify the cut: `node scripts/transcribe.mjs <videoDir> --input work/cut-preview.wav --out cut-check`, then compare `cut-check.txt` with the original. Every kept sentence must be intact (no chopped words). If a word got clipped, adjust `removals.json` or `--threshold`/`--min-silence` and re-run.
+Verify the cut (mandatory): `node scripts/transcribe.mjs <videoDir> --input work/cut-preview.wav --out cut-check`, then compare `cut-check.txt` with the original:
+- Every kept sentence must be intact (no chopped words).
+- Every intended removal must be gone.
+- Fix misses by adjusting `removals.json` (or `--threshold`/`--min-silence`) and re-running.
+
+The preview has 10 ms fades at every join (`edl.json` `fadeMs`) so cuts don't click. The render must apply the same fades.
 
 ### 5. Edit plan
 Write `work/plan.json`: an ordered list of beats on the **cut timeline** (seconds after cutting), each with:
@@ -92,14 +108,28 @@ Render a **draft** (lower quality / `--scale 0.5`). Extract a frame every 2 s pl
 - Brand: colors, fonts, logo rules
 - Nothing overlaps the face or goes off-screen; the Shorts safe zones are clear
 - Callouts are spelled right, in sync, and readable for ≥ 1.2 s
-- No static stretch over 5 s; no B-roll that contradicts the speech
-- Audio: no clipped words, SFX on the right frames, music under the voice
+- No static stretch over 5 s; no full-screen graphic over 6 s without the speaker; no B-roll that contradicts the speech
+- Audio: no clipped words or clicks at joins, SFX on the right frames, music under the voice
+- Duration: `ffprobe` the render. It must equal `edl.json` `keptSeconds` within one frame, or sync is broken
+- Every learned rule in `learned-rules.md` is respected
 
 Fix the problems and re-render. Then render the final to `out/final.mp4`.
 
 ### 9. Report
-Write `out/edit-report.md`: total cut time, list of removals (with reasons), beats summary, assets used, anything skipped or missing (empty SFX folders, unsynced files), and suggestions (e.g. a stronger hook order). Give the user a short summary plus the path to `final.mp4`.
+Write `out/edit-report.md` with:
+- Total cut time, and the list of removals (with reasons)
+- **Unsure**: every judgment call with its final-video time (a filler that might carry meaning, close takes, weak sync), so the user can check just those spots
+- Beats summary, assets used
+- Anything skipped or missing (empty SFX folders, unsynced files)
+- Suggestions (e.g. a stronger hook order)
+
+Give the user a short summary plus the path to `final.mp4`.
 
 ## Fix requests
 
-When the user asks for a change after a render ("callout at 1:20 is wrong", "less zoom"), edit `plan.json` / `removals.json`, re-run only the affected steps, and re-render. Times the user gives refer to the **final video**, so map them through the EDL.
+The user sends notes like `0:42 - the title covers my face, move it left`. Times refer to the **final video**; map them through the EDL.
+1. Change **only what was listed**. Everything else stays exactly as it is (same beats, same cuts, same assets).
+2. Edit `plan.json` / `removals.json`, re-run only the affected steps, re-render, and re-check the changed spots.
+3. **Learn from it.** For every note that reflects a general preference (not a one-off content fix), add a rule to `references/learned-rules.md`, worded for all future videos, with the reason: `- **Rule.** Why: reason. (date, video-slug)`.
+   - If the config has `repoDir`, edit the rule there, then commit and push (`git -C <repoDir> pull --rebase`, commit `Learned rule: ...`, push), so the whole team gets it on `/plugin update`.
+   - Otherwise (no push access), append it to `<studio>/learned-rules-pending.md` and tell the user to send that file to the repo maintainer. Also read that file at the start of every edit, since its rules apply locally too.

@@ -2,7 +2,9 @@
 // saves the config, and installs the official Remotion agent skills.
 //
 // Usage:
-//   node setup.mjs --studio "D:/MFM-Studio" --language en [--model medium] [--skip-remotion-skills]
+//   node setup.mjs --studio "D:/MFM-Studio" --language ur [--model large-v3-turbo] [--repo <git checkout>] [--skip-remotion-skills]
+//   --repo: local git checkout of MaximumCell/Claude-editing-Skill, so learned rules can be
+//           committed and pushed (only for people with push access)
 //   node setup.mjs --check          (verify an existing setup, change nothing)
 
 import fs from 'node:fs';
@@ -51,14 +53,32 @@ let existing = null;
 if (fs.existsSync(CONFIG_PATH)) existing = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 const studioDir = path.resolve(args.studio ?? existing?.studioDir ?? fail('Pass --studio <path> (where the MFM-Studio folder should live).'));
 const language = args.language ?? existing?.language ?? fail('Pass --language <code> (spoken language of the videos, e.g. en, ur, hi, or auto).');
-const whisperModel = args.model ?? existing?.whisperModel ?? 'medium';
+const whisperModel = args.model ?? existing?.whisperModel ?? 'large-v3-turbo';
+const repoDir = args.repo ? path.resolve(args.repo) : existing?.repoDir ?? null;
+if (repoDir && !fs.existsSync(path.join(repoDir, '.git'))) fail(`--repo ${repoDir} is not a git checkout.`);
 
 for (const f of STUDIO_FOLDERS) fs.mkdirSync(path.join(studioDir, f), { recursive: true });
+
+// .env: create it, or add any missing key lines (existing values are never touched).
 const envFile = path.join(studioDir, '.env');
-if (!fs.existsSync(envFile)) {
-  fs.writeFileSync(envFile, '# Shared team keys. Never commit or share this file publicly.\nAI_IMAGE_API_KEY=\nEPIDEMIC_API_KEY=\n');
+const ENV_KEYS = ['ELEVENLABS_API_KEY', 'AI_IMAGE_API_KEY', 'EPIDEMIC_API_KEY'];
+let env = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '# Shared team keys. Fill them in yourself; never paste keys into a chat.\n';
+for (const k of ENV_KEYS) {
+  if (!new RegExp(`^${k}=`, 'm').test(env)) env += `${env.endsWith('\n') ? '' : '\n'}${k}=\n`;
 }
-const cfg = { studioDir, language, whisperModel, whisperCppVersion: WHISPER_CPP_VERSION, remotionVersion: REMOTION_VERSION };
+fs.writeFileSync(envFile, env);
+
+// keyterms.txt: brand and product names, so transcription spells them right.
+const keytermsFile = path.join(studioDir, 'keyterms.txt');
+if (!fs.existsSync(keytermsFile)) {
+  fs.writeFileSync(keytermsFile, [
+    '# One name per line. Transcription uses these to spell names correctly. Add new tools as they come up.',
+    'Aaghaz', 'Make First Million', 'Be an Outliner', 'Claude', 'Claude Code', 'Anthropic', 'ChatGPT', 'OpenAI',
+    'GPT', 'Gemini', 'n8n', 'Make.com', 'Zapier', 'Cursor', 'vibe coding', 'AI automation', 'AI agent', 'Remotion',
+  ].join('\n') + '\n');
+}
+
+const cfg = { studioDir, language, whisperModel, repoDir, whisperCppVersion: WHISPER_CPP_VERSION, remotionVersion: REMOTION_VERSION };
 saveConfig(cfg);
 cfg.engineDir = path.join(studioDir, '.engine');
 console.log(`\nStudio: ${studioDir}\nConfig saved: ${CONFIG_PATH}`);
@@ -109,6 +129,6 @@ if (!args['skip-remotion-skills']) {
 
 console.log(`\nSetup complete.
 Next:
-  1. Put the shared team keys in ${envFile}
+  1. Fill in the shared team keys in ${envFile} (ELEVENLABS_API_KEY first; without it transcription runs locally and slowly)
   2. Copy logos to brand/logos, fonts to brand/fonts, B-roll to broll/, Epidemic files to sfx/ and music/
   3. Create a video folder: ${path.join(studioDir, 'videos', '<date-slug>')} with camera.mp4, mic.wav, screens/`);

@@ -1,8 +1,8 @@
 // Builds the cut list (EDL) for the master audio: removes silences automatically, plus any
 // ranges Claude marked for removal (fillers, retakes) in work/removals.json.
-// removals.json edges are approximate word times (Whisper DTW can be off by up to ~1 s), so each
-// edge is snapped to a real pause found in the audio: for retakes/sentences the nearest pause
-// >= 150 ms within ±1.2 s, for fillers the nearest pause >= 30 ms within ±0.4 s.
+// Each removal edge is snapped to a real pause found in the audio. How far it may move depends on
+// work/transcript.json "timing": "exact" (ElevenLabs) moves edges at most 0.15-0.3 s; "approx"
+// (local Whisper, word times can be ~1 s off) searches ±0.4 s for fillers and ±1.2 s for sentences.
 // Every final cut point is then snapped to the quietest 10 ms within ±80 ms so words are never clipped.
 //   start = time of the first word to remove, end = time of the first word to keep.
 //   Optional "kind": "filler" | "sentence" (default: "filler" if reason starts with "filler").
@@ -10,7 +10,8 @@
 // Usage: node cut-plan.mjs <videoDir> [--threshold -40] [--min-silence 0.35] [--preview]
 //   removals.json (optional): [{ "start": 12.3, "end": 14.1, "reason": "retake" }, ...]
 // Output: work/edl.json  { keep: [{ start, end }], removedSeconds, ... }  (master-audio time)
-//         work/cut-preview.wav with --preview (re-transcribe it to verify the cut)
+//         work/cut-preview.wav with --preview (re-transcribe it to verify the cut). Every join gets a
+//         10 ms fade out/in so cuts never click; the final render must do the same (edl.fadeMs).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +26,9 @@ const minSilence = Number(args['min-silence'] ?? 0.35); // s
 const PAD_BEFORE = 0.08, PAD_AFTER = 0.12, SNAP = 0.08, MIN_KEEP = 0.25;
 
 const duration = ffprobeDuration(master);
+const FADE = 0.01;
+const transcriptFile = path.join(vp.work, 'transcript.json');
+const timing = fs.existsSync(transcriptFile) ? JSON.parse(fs.readFileSync(transcriptFile, 'utf8')).timing ?? 'approx' : 'approx';
 
 // 1. Silences from ffmpeg silencedetect.
 const sd = run('ffmpeg', ['-v', 'info', '-i', master, '-af', `silencedetect=noise=${threshold}dB:d=${minSilence}`, '-f', 'null', '-']);
@@ -68,14 +72,17 @@ for (let i = 0, start = -1; i <= frameDb.length; i++) {
   if (!quiet && start >= 0) { if (i - start >= 3) pauses.push({ start: start / 100, end: i / 100 }); start = -1; }
 }
 const snapEdge = (t, kind) => {
-  const [minLen, range] = kind === 'filler' ? [0.03, 0.4] : [0.15, 1.2];
+  const [minLen, range] = timing === 'exact'
+    ? (kind === 'filler' ? [0.02, 0.15] : [0.05, 0.3])
+    : (kind === 'filler' ? [0.03, 0.4] : [0.15, 1.2]);
   let best = null, bestD = Infinity;
   for (const p of pauses) {
     if (p.end - p.start < minLen) continue;
     const d = t < p.start ? p.start - t : t > p.end ? t - p.end : 0;
     if (d < bestD) { bestD = d; best = p; }
   }
-  return best && bestD <= range ? (best.start + best.end) / 2 : quietest(t, 0.5, 0.1);
+  if (best && bestD <= range) return (best.start + best.end) / 2;
+  return timing === 'exact' ? quietest(t, 0.1, 0.03) : quietest(t, 0.5, 0.1);
 };
 const kindOf = (r) => r.kind ?? (/^\s*filler/i.test(r.reason ?? '') ? 'filler' : 'sentence');
 
@@ -103,15 +110,23 @@ if (duration - cursor >= MIN_KEEP) keep.push({ start: +cursor.toFixed(3), end: +
 const kept = keep.reduce((s, k) => s + (k.end - k.start), 0);
 writeJson(path.join(vp.work, 'edl.json'), {
   master: path.relative(vp.dir, master), duration, keptSeconds: +kept.toFixed(2), removedSeconds: +(duration - kept).toFixed(2),
-  settings: { threshold, minSilence }, silences: silences.length, removals: removals.length, keep,
+  fadeMs: FADE * 1000, timing, settings: { threshold, minSilence }, silences: silences.length, removals: removals.length, keep,
 });
 console.log(`Kept ${kept.toFixed(1)}s of ${duration.toFixed(1)}s in ${keep.length} segments (${silences.length} silences, ${removals.length} manual removals).`);
 
 // 5. Optional audio preview of the cut, for re-transcription checks.
 if (args.preview) {
-  const sel = keep.map((k) => `between(t,${k.start},${k.end})`).join('+');
+  // Trim each kept segment, fade its edges, then concatenate.
+  const parts = keep.map((k, i) => {
+    const len = k.end - k.start;
+    return `[s${i}]atrim=${k.start}:${k.end},asetpts=PTS-STARTPTS,afade=t=in:d=${FADE},afade=t=out:st=${(len - FADE).toFixed(3)}:d=${FADE}[k${i}]`;
+  });
   const filter = path.join(vp.work, 'cut-filter.txt');
-  fs.writeFileSync(filter, `aselect='${sel}',asetpts=N/SR/TB`);
-  run('ffmpeg', ['-v', 'error', '-y', '-i', master, '-/filter:a', filter, path.join(vp.work, 'cut-preview.wav')]);
+  fs.writeFileSync(filter, [
+    `[0:a]asplit=${keep.length}${keep.map((_, i) => `[s${i}]`).join('')}`,
+    ...parts,
+    `${keep.map((_, i) => `[k${i}]`).join('')}concat=n=${keep.length}:v=0:a=1[out]`,
+  ].join(';\n'));
+  run('ffmpeg', ['-v', 'error', '-y', '-i', master, '-/filter_complex', filter, '-map', '[out]', path.join(vp.work, 'cut-preview.wav')]);
   console.log('Wrote work/cut-preview.wav');
 }
