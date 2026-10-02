@@ -4,7 +4,8 @@
 // times, keeps filler words, tags coughs/laughs, strong Urdu + English code-switching),
 // otherwise local Whisper (free, offline, slower, approximate word times).
 //
-// Usage: node transcribe.mjs <videoDir> [--input <file>] [--out <name>] [--provider elevenlabs|whisper]
+// Usage: node transcribe.mjs <videoDir> [--input <file>] [--out <name>] [--provider elevenlabs|whisper] [--force]
+// Results are cached: an unchanged input with the same settings is never transcribed (or paid for) twice.
 // Output (in <videoDir>/work/):
 //   <name>.json       { provider, timing: "exact"|"approx", words: [{ text, start, end, confidence, type }] }
 //                     type: "word" or "event" (e.g. "(cough)", ElevenLabs only)
@@ -14,7 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fail, fmtTime, loadConfig, loadEnv, parseArgs, requireFromEngine, run, videoPaths, writeJson } from './lib.mjs';
+import { fail, fileKey, fmtTime, loadConfig, loadEnv, parseArgs, requireFromEngine, run, videoPaths, writeJson } from './lib.mjs';
 
 const args = parseArgs();
 const videoDir = args._[0] ?? fail('Usage: node transcribe.mjs <videoDir>');
@@ -31,6 +32,14 @@ const keytermsFile = path.join(cfg.studioDir, 'keyterms.txt');
 const keyterms = fs.existsSync(keytermsFile)
   ? fs.readFileSync(keytermsFile, 'utf8').split(/\r?\n/).map((s) => s.trim()).filter((s) => s && !s.startsWith('#')).slice(0, 1000)
   : [];
+
+// Cache: never re-transcribe (or re-pay for) an unchanged input with the same settings.
+const cacheKey = [fileKey(input), provider, provider === 'whisper' ? cfg.whisperModel : 'scribe_v2', cfg.language, keyterms.join(',')].join('|');
+const outJson = path.join(vp.work, `${name}.json`);
+if (!args.force && fs.existsSync(outJson) && JSON.parse(fs.readFileSync(outJson, 'utf8')).cacheKey === cacheKey) {
+  console.log(`work/${name}.json is up to date for this input (use --force to redo).`);
+  process.exit(0);
+}
 
 let result;
 if (provider === 'elevenlabs') result = await elevenlabs();
@@ -89,22 +98,33 @@ async function whisper() {
   });
   console.log('');
   writeJson(path.join(vp.work, `${name}-raw.json`), raw);
-  // Merge tokens into words (a token starting with a space begins a new word). Word time is the
-  // DTW timestamp, which can be off by up to ~1 s; cut-plan.mjs snaps edges to real pauses.
+  // Word times come from token DTW timestamps (can be off by up to ~1 s; cut-plan.mjs snaps
+  // edges to real pauses). Word TEXT comes from the segment text, never from joined tokens:
+  // on Urdu and other non-Latin scripts a token can hold half of a multi-byte character, so
+  // gluing tokens back together produces corrupted text.
   const words = [];
   for (const seg of raw.transcription) {
     if (/^\s*\[/.test(seg.text)) continue; // [BLANK_AUDIO], [Music], ...
+    const segWords = seg.text.trim().split(/\s+/).filter(Boolean);
+    const starts = []; // DTW time of each token that begins a word
+    let minP = 1;
     for (const tok of seg.tokens) {
       if (tok.text.startsWith('[_') || tok.text.trim() === '') continue;
-      const t = tok.t_dtw >= 0 ? tok.t_dtw / 100 : tok.offsets.from / 1000;
-      if (tok.text.startsWith(' ') || words.length === 0) {
-        words.push({ text: tok.text.trim(), start: +t.toFixed(2), end: +t.toFixed(2), confidence: +tok.p.toFixed(3), type: 'word' });
-      } else {
-        const w = words[words.length - 1];
-        w.text += tok.text;
-        w.confidence = Math.min(w.confidence, +tok.p.toFixed(3));
-      }
+      if (tok.text.startsWith(' ') || starts.length === 0) starts.push({ t: tok.t_dtw >= 0 ? tok.t_dtw / 100 : tok.offsets.from / 1000, p: tok.p });
+      else starts[starts.length - 1].p = Math.min(starts[starts.length - 1].p, tok.p);
+      minP = Math.min(minP, tok.p);
     }
+    const a = seg.offsets.from / 1000, b = seg.offsets.to / 1000;
+    segWords.forEach((text, i) => {
+      // Token boundaries usually match words 1:1. If they don't (split characters), spread the
+      // words evenly across the segment instead and mark them low-confidence.
+      const s = starts.length === segWords.length ? starts[i] : { t: a + ((b - a) * i) / segWords.length, p: Math.min(minP, 0.3) };
+      words.push({ text, start: +s.t.toFixed(2), end: +s.t.toFixed(2), confidence: +s.p.toFixed(3), type: 'word' });
+    });
+  }
+  // Newer whisper.cpp emits punctuation as its own word ("money ."): attach it to the word before.
+  for (let i = words.length - 1; i > 0; i--) {
+    if (/^[\p{P}]+$/u.test(words[i].text)) { words[i - 1].text += words[i].text; words.splice(i, 1); }
   }
   // Whisper gives no real word ends: use the next word's time, capped at 1 s.
   words.forEach((w, i) => { w.end = +Math.min(words[i + 1]?.start ?? w.start + 0.5, w.start + 1).toFixed(2); });
@@ -125,7 +145,7 @@ words.forEach((w, i) => {
   }
 });
 
-writeJson(path.join(vp.work, `${name}.json`), { source: path.relative(vp.dir, input), ...result });
+writeJson(outJson, { source: path.relative(vp.dir, input), cacheKey, ...result });
 fs.writeFileSync(path.join(vp.work, `${name}.txt`), lines.join('\n'));
 fs.writeFileSync(path.join(vp.work, `${name}-words.tsv`),
   words.map((w) => `${w.start.toFixed(2)}\t${w.end.toFixed(2)}\t${w.confidence.toFixed(2)}\t${w.text}`).join('\n'));

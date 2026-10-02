@@ -79,6 +79,31 @@ export function ffprobeDuration(file) {
   return parseFloat(r.stdout.trim());
 }
 
+// Width/height as the video is DISPLAYED. Phone footage often stores landscape pixels plus a
+// rotation flag, so the raw stream says 1920x1080 for a vertical video; trusting it letterboxes
+// the whole edit without any error.
+export function probeVideo(file) {
+  const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_streams', '-show_format', '-of', 'json', file], { encoding: 'utf8' });
+  if (r.status !== 0) return null;
+  const j = JSON.parse(r.stdout);
+  const s = j.streams?.[0];
+  if (!s) return null;
+  const rotation = Math.abs(Number(s.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? s.tags?.rotate ?? 0)) % 180;
+  const [w, h] = rotation === 90 ? [s.height, s.width] : [s.width, s.height];
+  const rate = (x) => { const [a, b] = String(x ?? '0/1').split('/').map(Number); return b ? a / b : 0; };
+  const fps = rate(s.r_frame_rate), avgFps = rate(s.avg_frame_rate);
+  return {
+    width: w, height: h, rotation, fps: +fps.toFixed(3), avgFps: +avgFps.toFixed(3),
+    vfr: avgFps > 0 && Math.abs(fps - avgFps) > 0.05, duration: parseFloat(j.format?.duration ?? s.duration ?? 0),
+  };
+}
+
+// Cache key for "is this the same input as last time": path + size + modified time.
+export function fileKey(file) {
+  const st = fs.statSync(file);
+  return `${path.resolve(file)}|${st.size}|${Math.floor(st.mtimeMs)}`;
+}
+
 export function hasAudioStream(file) {
   const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file], { encoding: 'utf8' });
   return r.status === 0 && r.stdout.trim().length > 0;

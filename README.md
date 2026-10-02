@@ -29,6 +29,10 @@ Update later with `/plugin update`.
 
 When you correct a video, the skill saves the fix as a rule in `skills/mfm-video-editor/references/learned-rules.md`. If you have push access (setup `--repo`), the rule is pushed, so everyone gets it with `/plugin update`. Without push access, rules go to `<MFM-Studio>/learned-rules-pending.md`, and you send that file to the maintainer.
 
+## Credits
+
+Many craft rules and checks are adapted from [ranahaani/i-hate-editing](https://github.com/ranahaani/i-hate-editing) (MIT, © 2026 Muhammad Abdullah): silence-anchored cuts, per-seam verification, peak-aligned and differenced SFX levels, motion and framing rules, and the taste-memory format. The ElevenLabs transcription, learned-rules loop, and click-free joins follow the RoboNuggets "Automate your video editing" guide.
+
 ## Repo layout
 
 ```

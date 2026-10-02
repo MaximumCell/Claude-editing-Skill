@@ -12,6 +12,8 @@ When the speaker mentions a product (OpenAI, Claude, n8n, Google, Notion...), sh
 4. **Wikimedia Commons** SVG of the logo (search "<company> logo svg site:commons.wikimedia.org").
 
 Rules:
+- **An exact match or nothing** *(i-hate-editing)*. Asking for "OpenAI" and silently getting "OpenAI Gym" puts the wrong company's mark on screen. Check the name and the mark before using it.
+- A named product **always** gets its real mark. A named tool without its logo reads as a placeholder. If no logo exists, use a neutral concept icon (a key for "API key", a clock for "limit"), never an invented logo.
 - Prefer SVG, then PNG with a transparent background (≥ 512 px). No JPGs with white boxes, no watermarked images, no logos from random wallpaper sites.
 - Don't alter the logo's shape or proportions. Recoloring to single white/black is fine for monochrome versions.
 - Save new downloads to `logos-cache/` with a lowercase slug filename, and add a line to `logos-cache/SOURCES.md` (`slug | url | date`).

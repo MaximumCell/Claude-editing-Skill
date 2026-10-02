@@ -9,6 +9,8 @@ Status: v0.1 in progress.
 - Whisper: whisper.cpp 1.9.2 + large-v3-turbo (1.5.5 cannot do turbo word timing). ~2.7× real time on the i5-8365U laptop (no NVIDIA GPU)
 - Transcription: ElevenLabs Scribe v2 when ELEVENLABS_API_KEY is set (exact word times, keeps fillers, Urdu code-switching, ~$0.22/h, free plan 4.5 h/month), local Whisper fallback. AssemblyAI rejected: Urdu only on Universal-2 (10-25% WER)
 - From the RoboNuggets guide (2026-10-02): learned-rules.md (fixes become rules, pushed to repo), only-remove-never-reorder, 10 ms fades at joins, render length = cut length check, change-only-what-was-listed on fixes, Unsure section in report, full-screen graphics max 6 s
+- From ranahaani/i-hate-editing (2026-10-02): new scripts inventory.mjs (rotation/VFR), verify-cut.mjs (per-seam windows: repeats, weak starts, pops, retakes left in), sfx-index.mjs (peak offsets), transcript cache, Urdu-safe Whisper word text; rules on silence-anchored cuts, complete clauses, deliberate post-hook pause, held zooms (no shimmer), dwell 1.5 s floor, one-thing-at-a-time, entrance table, real proof first, screens-only borrowed clips, SFX by peak + differencing, hook opener + post-hook sting, publishing package (titles, chapters, thumbnails)
+- Open design question for the Remotion build: one composition for the whole video vs one composition per graphic rendered separately and composited (i-hate-editing/flick approach: a fix re-renders only the changed graphic, which matters for 20-min videos)
 - Known limit (Whisper fallback only): word times can be ~1 s off; sentence-level retake cuts are reliable, single-word cuts near long pauses can miss (caught by the re-transcription check)
 - Spoken language: mostly Urdu with some English → Whisper language `ur`
 
