@@ -1,7 +1,12 @@
 # mfm-video-editor: Skill Plan (draft)
 
 Channel: Make First Million (https://www.youtube.com/@makefirstmillion-j1)
-Status: planning. Nothing is built yet.
+Status: v0.1 in progress.
+- Built and tested on synthetic English audio: `setup.mjs`, `sync-audio.mjs` (offset ±11 ms, drift detected exactly), `transcribe.mjs`, `cut-plan.mjs` (retake + silence removal verified by re-transcription)
+- Written: `SKILL.md`, `references/brand.md`, `style-rules.md`, `sfx-rules.md`, `broll-sourcing.md`, `logo-sourcing.md`
+- Not yet built: Remotion template + brand components, edit-plan → render step, review loop
+- Not yet tested: Urdu/English speech (needs a real recording)
+- Spoken language: mostly Urdu with some English → Whisper language `ur`
 
 ## Decisions so far
 | Topic | Decision |
