@@ -1,6 +1,6 @@
 ---
 name: mfm-video-editor
-description: Automatically edits Make First Million / Aaghaz videos with Remotion. Takes a raw recording folder (camera, separate mic WAV, screen recordings), audio-syncs everything, cuts silences/fillers/retakes (Urdu + English), and adds branded motion graphics, keyword callouts, punch-in zooms, B-roll, logos, and Epidemic Sound SFX/music, then renders long-form 16:9 or Shorts 9:16. Use this whenever the user asks to edit, cut, clean up, sync, render, or add graphics/B-roll/SFX to a video or recording folder, mentions MFM-Studio, Make First Million, Aaghaz, or a videos/<slug> folder, or wants a talking-head video turned into a finished YouTube video or Short, even if they don't name the skill.
+description: Automatically edits Make First Million / Aaghaz videos with HyperFrames + Remotion. Takes a raw recording folder (camera, separate mic WAV, screen recordings), audio-syncs everything, cuts silences/fillers/retakes (Urdu + English), and adds branded motion graphics, keyword callouts, punch-in zooms, B-roll, logos, and Epidemic Sound SFX/music, then renders long-form 16:9 or Shorts 9:16. Use this whenever the user asks to edit, cut, clean up, sync, render, or add graphics/B-roll/SFX to a video or recording folder, mentions MFM-Studio, Make First Million, Aaghaz, or a videos/<slug> folder, or wants a talking-head video turned into a finished YouTube video or Short, even if they don't name the skill. For these videos this skill takes precedence over the general hyperframes / talking-head-recut / remotion workflows, which it uses only as code references.
 ---
 
 # MFM Video Editor
@@ -22,7 +22,13 @@ Scripts live in `scripts/` next to this file. Run them with `node <skill-dir>/sc
 | `references/broll-sourcing.md` | When the edit needs B-roll |
 | `references/logo-sourcing.md` | When a company or product logo is needed |
 
-Also use the official Remotion skills (`remotion-best-practices` and friends, installed by setup) for correct Remotion code: timing, `<OffthreadVideo>`, `<Audio>`, fonts, `staticFile`, and rendering.
+| `references/engines.md` | Before building any graphic or the master: which engine does what (HyperFrames / Remotion / ffmpeg) and how |
+
+Also use the official engine skills installed by setup, **as code references only**:
+- **Remotion**: `remotion-best-practices` and friends, for timing, `<OffthreadVideo>`, fonts, `staticFile`, and rendering.
+- **HyperFrames**: `hyperframes-core`, `hyperframes-animation`, `hyperframes-keyframes`, and `hyperframes-registry`, for writing a graphic's HTML correctly.
+
+**This skill owns the workflow for every Make First Million / Aaghaz video.** HyperFrames' own `hyperframes` router and its `talking-head-recut` workflow describe themselves as the entry point for any video. Here they are not: don't hand the edit to them. Our transcription, cutting, assembly, and `brand.md` replace theirs.
 
 ## Folder layout
 
@@ -99,20 +105,24 @@ The preview has 10 ms fades at every join (`edl.json` `fadeMs`) so cuts don't cl
 
 ### 5. Edit plan
 Write `work/plan.json`: an ordered list of beats on the **cut timeline** (seconds after cutting), each with:
-`{ start, end, layout, zoom, callout?, graphic?, broll?, screen?, logo?, sfx[], music? }`
+`{ id, start, end, layout, zoom, callout?, graphic?, engine?, broll?, screen?, logo?, sfx[], music? }`
+(`engine`: `"hyperframes"` or `"remotion"` for any beat with a graphic. See `engines.md` for which to pick.)
 Use the graphics vocabulary in `style-rules.md` §6. Hit the pacing rule (a change every 2–4 s; 1.5–3 s for Shorts) and the hook structure (§8). Every visual must match what's said at that moment.
 
 ### 6. Gather assets
 Real proof first, then B-roll per `broll-sourcing.md`, logos per `logo-sourcing.md`, SFX/music per `sfx-rules.md`. Run `node scripts/sfx-index.mjs` and place every sound by its peak: start = visual time − `peakAt`. Copy what you use into the video's `work/assets/` so the render is self-contained. Log every external source in `out/sources.md`.
 
-### 7. Build the Remotion composition
-- Remotion project: `assets/template/` (copy it to `<studio>/.engine/remotion/` on first use, then `npm install`). If the template is still empty, scaffold a Remotion project there (pinned to the `remotionVersion` in the config) and build reusable brand components (PiP, Callout, ComparisonCards, IconFlow, Chart, HudList, UiPanel, LogoPop, CtaPill) following `brand.md`. Keep them generic, because every future video reuses them.
-- The composition reads `edl.json`, `sync.json`, and `plan.json` as props. A-roll = the camera clip at sync offset, cut by the EDL. Audio = `mic.wav` cut by the same EDL. Camera and screen audio are muted.
-- Render with `--public-dir <videoDir>/work` so `staticFile()` finds the assets.
+### 7. Build: graphics, then the master, then the sound
+Read `references/engines.md` first. Hybrid: **HyperFrames** builds one-off graphics, **Remotion** builds reusable brand components and assembles the whole video, **ffmpeg** mixes all audio.
+1. **Graphics**: every graphic beat in `plan.json` renders to its own transparent clip in `work/graphics/<beat-id>.webm`, exactly as long as the beat, at the inventory's size and fps. One-off/text-led/catalog effects use HyperFrames (lint must be clean before rendering). Reused components or anything that moves or crops the camera use Remotion. Look at each clip before assembly.
+2. **Master** (Remotion): project from `assets/template/`, copied to `<studio>/.engine/remotion/` on first use, then `npm install`. If the template is still empty, scaffold a Remotion project there (pinned to `remotionVersion`) and build the reusable brand components (ScreenPip, Split, ComparisonCards, IconFlow, HudList, UiPanel) following `brand.md`. Keep them generic, because every future video reuses them. The master composition reads `edl.json`, `sync.json`, and `plan.json` as props: A-roll at its sync offset cut by the EDL, zooms, screen recordings, layouts, and every graphic clip as a transparent `<OffthreadVideo>` on top. Render it **muted** with `--public-dir <videoDir>/work`.
+3. **Sound** (ffmpeg): voice cut by the EDL with the 10 ms join fades, SFX placed by peak (`sfx-index.json`), music bed ducked, loudness −14 LUFS, muxed onto the master → `out/final.mp4`.
+
+Rules for both engines:
 - Size and fps come from `inventory.json`: 1920×1080 (Shorts 1080×1920), at the camera's fps. A graphic rendered at a different fps or size gets resampled and judders, with no error.
-- **Frame-driven motion only**: everything animates from `useCurrentFrame()` (`interpolate`, `spring`). CSS transitions, timers, and `requestAnimationFrame` render as a still, because Remotion doesn't render in real time.
-- **No audio inside graphic components.** Every sound goes through the audio plan so it's mixed and measured with the voice.
-- Every SFX is placed by its peak (`sfx-index.json`), and every join in the voice gets the EDL's 10 ms fades.
+- **Seek-safe motion only**: Remotion animates from `useCurrentFrame()` (`interpolate`, `spring`); HyperFrames from one paused GSAP timeline registered on `window.__timelines`. CSS transitions, timers, `requestAnimationFrame`, `Math.random()`, and network calls break the render.
+- **No audio inside any graphic.** Every sound goes through the ffmpeg mix so it can be measured against the voice.
+- **Fix requests re-render only what changed**: the affected graphic clips, then the master. A sound-only fix re-runs only the mix.
 
 ### 8. Review loop (at least once)
 Render a **draft** (lower quality / `--scale 0.5`). Extract a frame every 2 s plus the first and last frame of every beat (`ffmpeg -vf fps=0.5`), and look at them. Don't present output you haven't looked at. Check:

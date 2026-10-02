@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+  MFM brand keyword callout (HyperFrames, transparent).
+  Copy this folder to work/graphics/<beat-id>/, then:
+    1. copy gsap.min.js next to it (from ~/.claude/skills/talking-head-recut/assets/vendor/)
+    2. copy the brand fonts into ./fonts/ (from <studio>/brand/fonts/), matching the @font-face names below
+    3. set data-width / data-height / data-duration to the video size and the beat length
+    4. change the words; keep ONE accent word
+    5. lint, check, then: npx -y hyperframes@<v> render --format webm --fps <fps> --output ../<beat-id>.webm
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Poppins"; font-weight: 700; src: url("fonts/Poppins-Bold.woff2") format("woff2"); }
+      @font-face { font-family: "Poppins"; font-weight: 800; src: url("fonts/Poppins-ExtraBold.woff2") format("woff2"); }
+      body { margin: 0; background: transparent; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      #callout {
+        position: absolute; left: 50%; bottom: 13%;
+        display: flex; gap: 0.3em; align-items: baseline; white-space: nowrap;
+        padding: 0.4em 0.8em; border-radius: 9999px;
+        background: rgba(0, 0, 0, 0.82); border: 2px solid rgba(255, 255, 255, 0.15);
+        font-family: "Poppins"; font-weight: 700; font-size: 54px; color: #ffffff;
+      }
+      #accent { color: #c3ff00; font-weight: 800; font-size: 1.35em; display: inline-block; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="callout" data-start="0" data-width="1920" data-height="1080" data-duration="3">
+      <div id="callout" class="clip" data-start="0" data-duration="3"><span>AI</span><span id="accent">Automation</span></div>
+    </div>
+    <script>
+      // One paused timeline, registered under the composition id. Arrive: slide up + fade (eased),
+      // accent word pops with a slight overshoot, exit: slide away (not fade).
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#callout", { xPercent: -50, y: 24, opacity: 0 }, { xPercent: -50, y: 0, opacity: 1, duration: 0.33, ease: "power3.out" }, 0.1);
+      tl.fromTo("#accent", { scale: 0.8 }, { scale: 1, duration: 0.3, ease: "back.out(2)" }, 0.3);
+      tl.to("#callout", { x: 320, opacity: 0, duration: 0.3, ease: "power2.in" }, 2.6);
+      window.__timelines["callout"] = tl;
+    </script>
+  </body>
+</html>

@@ -2,7 +2,7 @@
 // saves the config, and installs the official Remotion agent skills.
 //
 // Usage:
-//   node setup.mjs --studio "D:/MFM-Studio" --language ur [--model large-v3-turbo] [--repo <git checkout>] [--skip-remotion-skills]
+//   node setup.mjs --studio "D:/MFM-Studio" --language ur [--model large-v3-turbo] [--repo <git checkout>] [--skip-remotion-skills] [--skip-hyperframes-skills]
 //   --repo: local git checkout of MaximumCell/Claude-editing-Skill, so learned rules can be
 //           committed and pushed (only for people with push access)
 //   node setup.mjs --check          (verify an existing setup, change nothing)
@@ -15,6 +15,7 @@ import {
 } from './lib.mjs';
 
 const REMOTION_VERSION = '4.0.532'; // pin all @remotion/* packages to one version
+const HYPERFRAMES_VERSION = '0.8.111'; // pinned so every PC renders HyperFrames graphics identically
 const STUDIO_FOLDERS = [
   'brand/logos', 'brand/fonts', 'logos-cache', 'broll', 'sfx', 'music', 'videos',
 ];
@@ -78,7 +79,7 @@ if (!fs.existsSync(keytermsFile)) {
   ].join('\n') + '\n');
 }
 
-const cfg = { studioDir, language, whisperModel, repoDir, whisperCppVersion: WHISPER_CPP_VERSION, remotionVersion: REMOTION_VERSION };
+const cfg = { studioDir, language, whisperModel, repoDir, whisperCppVersion: WHISPER_CPP_VERSION, remotionVersion: REMOTION_VERSION, hyperframesVersion: HYPERFRAMES_VERSION };
 saveConfig(cfg);
 cfg.engineDir = path.join(studioDir, '.engine');
 console.log(`\nStudio: ${studioDir}\nConfig saved: ${CONFIG_PATH}`);
@@ -124,6 +125,17 @@ if (!args['skip-remotion-skills']) {
   const r = spawnSync('npx', ['-y', 'skills', 'add', 'remotion-dev/skills', '-g', '-y', '-a', 'claude-code'], { stdio: 'inherit', shell: true });
   if (r.status !== 0) {
     console.warn('WARNING: could not install remotion-dev/skills automatically. Run manually:\n  npx skills add remotion-dev/skills -g');
+  }
+}
+
+// ---- 6. HyperFrames: headless Chrome for rendering + official core agent skills ----
+console.log(`\nPreparing HyperFrames ${HYPERFRAMES_VERSION} (headless Chrome for rendering)...`);
+const hf = (...a) => spawnSync('npx', ['-y', `hyperframes@${HYPERFRAMES_VERSION}`, ...a], { stdio: 'inherit', shell: true });
+if (hf('browser', 'ensure').status !== 0) console.warn(`WARNING: HyperFrames browser setup failed. Run manually: npx hyperframes@${HYPERFRAMES_VERSION} browser ensure`);
+if (!args['skip-hyperframes-skills']) {
+  console.log('Installing official HyperFrames core agent skills (+ talking-head-recut)...');
+  if (hf('skills', 'update', 'talking-head-recut').status !== 0) {
+    console.warn(`WARNING: could not install HyperFrames skills automatically. Run manually: npx hyperframes@${HYPERFRAMES_VERSION} skills update talking-head-recut`);
   }
 }
 

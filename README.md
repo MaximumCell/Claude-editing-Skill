@@ -19,7 +19,7 @@ Update later with `/plugin update`.
 
 ## Requirements (Windows)
 
-- Node.js 22+
+- Node.js 22+ (HyperFrames and Remotion run through it; setup installs HyperFrames' headless Chrome)
 - ffmpeg
 - yt-dlp
 - A local **MFM-Studio** folder for logos, fonts, B-roll, SFX, and videos (created on first run)
@@ -32,6 +32,8 @@ When you correct a video, the skill saves the fix as a rule in `skills/mfm-video
 ## Credits
 
 Many craft rules and checks are adapted from [ranahaani/i-hate-editing](https://github.com/ranahaani/i-hate-editing) (MIT, © 2026 Muhammad Abdullah): silence-anchored cuts, per-seam verification, peak-aligned and differenced SFX levels, motion and framing rules, and the taste-memory format. The ElevenLabs transcription, learned-rules loop, and click-free joins follow the RoboNuggets "Automate your video editing" guide.
+
+Graphics are rendered with [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache 2.0, HeyGen) and [Remotion](https://www.remotion.dev).
 
 ## Repo layout
 
